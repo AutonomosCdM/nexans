@@ -105,11 +105,17 @@ st.markdown("""
 # Dynamic API configuration for Streamlit Cloud deployment
 try:
     API_BASE_URL = st.secrets["api"]["base_url"]
-    DEMO_MODE = st.secrets.get("demo", {}).get("enabled", False)
-except:
-    # Fallback for local development without secrets
+    DEMO_MODE = st.secrets["demo"]["enabled"]
+    # Debug info for Streamlit Cloud
+    if st.secrets.get("debug", False):
+        st.write(f"🔧 DEBUG: API_BASE_URL = {API_BASE_URL}")
+        st.write(f"🔧 DEBUG: DEMO_MODE = {DEMO_MODE}")
+except Exception as e:
+    # Force demo mode for Streamlit Cloud deployment
+    st.error(f"Secrets error: {e}")
+    st.warning("🚀 Running in FORCED DEMO MODE - Secrets not configured correctly")
     API_BASE_URL = "http://localhost:8000"
-    DEMO_MODE = False
+    DEMO_MODE = True  # Force demo mode instead of False
 
 # Helper functions
 @st.cache_data(ttl=300)  # Cache for 5 minutes
@@ -127,16 +133,29 @@ def fetch_lme_prices():
     """Fetch current LME prices"""
     if DEMO_MODE:
         # Return demo data for Streamlit Cloud deployment
-        return {
-            "lme_prices": {
-                "copper_usd_per_ton": st.secrets["demo"]["copper_price"],
-                "aluminum_usd_per_ton": st.secrets["demo"]["aluminum_price"],
+        try:
+            return {
+                "lme_prices": {
+                    "copper_usd_per_ton": st.secrets["demo"]["copper_price"],
+                    "aluminum_usd_per_ton": st.secrets["demo"]["aluminum_price"],
+                    "timestamp": datetime.now().isoformat(),
+                    "source": "Demo Data"
+                },
                 "timestamp": datetime.now().isoformat(),
-                "source": "Demo Data"
-            },
-            "timestamp": datetime.now().isoformat(),
-            "source": "Nexans Demo API"
-        }
+                "source": "Nexans Demo API"
+            }
+        except:
+            # Fallback demo data if secrets fail
+            return {
+                "lme_prices": {
+                    "copper_usd_per_ton": 9598,
+                    "aluminum_usd_per_ton": 2681,
+                    "timestamp": datetime.now().isoformat(),
+                    "source": "Fallback Demo Data"
+                },
+                "timestamp": datetime.now().isoformat(),
+                "source": "Nexans Demo API (Fallback)"
+            }
     return fetch_api_data("/api/pricing/current/lme")
 
 def fetch_system_status():
