@@ -102,7 +102,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Configuration
-API_BASE_URL = "http://localhost:8000"
+# Dynamic API configuration for Streamlit Cloud deployment
+try:
+    API_BASE_URL = st.secrets["api"]["base_url"]
+    DEMO_MODE = st.secrets.get("demo", {}).get("enabled", False)
+except:
+    # Fallback for local development without secrets
+    API_BASE_URL = "http://localhost:8000"
+    DEMO_MODE = False
 
 # Helper functions
 @st.cache_data(ttl=300)  # Cache for 5 minutes
@@ -118,7 +125,19 @@ def fetch_api_data(endpoint):
 
 def fetch_lme_prices():
     """Fetch current LME prices"""
-    return fetch_api_data("/api/pricing/lme-prices")
+    if DEMO_MODE:
+        # Return demo data for Streamlit Cloud deployment
+        return {
+            "lme_prices": {
+                "copper_usd_per_ton": st.secrets["demo"]["copper_price"],
+                "aluminum_usd_per_ton": st.secrets["demo"]["aluminum_price"],
+                "timestamp": datetime.now().isoformat(),
+                "source": "Demo Data"
+            },
+            "timestamp": datetime.now().isoformat(),
+            "source": "Nexans Demo API"
+        }
+    return fetch_api_data("/api/pricing/current/lme")
 
 def fetch_system_status():
     """Fetch system status"""
@@ -164,11 +183,7 @@ def main():
             ]
         )
         
-        # Real-time updates
-        auto_refresh = st.checkbox("Auto-refresh (30s)", value=True)
-        if auto_refresh:
-            time.sleep(30)
-            st.rerun()
+        # Manual refresh only
         
         st.markdown('</div>', unsafe_allow_html=True)
         
@@ -214,7 +229,7 @@ def show_executive_dashboard():
     
     with col1:
         if lme_data:
-            copper_price = lme_data["lme_prices"]["copper"]["price_usd_per_ton"]
+            copper_price = lme_data["lme_prices"]["copper_usd_per_ton"]
             st.metric(
                 "🔶 LME Copper",
                 f"${copper_price:,.0f}/ton",
@@ -226,7 +241,7 @@ def show_executive_dashboard():
     
     with col2:
         if lme_data:
-            aluminum_price = lme_data["lme_prices"]["aluminum"]["price_usd_per_ton"]
+            aluminum_price = lme_data["lme_prices"]["aluminum_usd_per_ton"]
             st.metric(
                 "⚪ LME Aluminum", 
                 f"${aluminum_price:,.0f}/ton",
@@ -237,20 +252,38 @@ def show_executive_dashboard():
             st.metric("⚪ LME Aluminum", "Loading...", delta="--")
     
     with col3:
-        st.metric(
-            "💼 Quotes Generated",
-            "847",
-            delta="+23 today",
-            delta_color="normal"
-        )
+        if DEMO_MODE:
+            quotes_count = st.secrets["demo"]["quotes_generated"]
+            st.metric(
+                "💼 Quotes Generated",
+                f"{quotes_count:,}",
+                delta="+23 today",
+                delta_color="normal"
+            )
+        else:
+            st.metric(
+                "💼 Quotes Generated",
+                "847",
+                delta="+23 today",
+                delta_color="normal"
+            )
     
     with col4:
-        st.metric(
-            "💰 Revenue Pipeline",
-            "$2.4M",
-            delta="+15.3%",
-            delta_color="normal"
-        )
+        if DEMO_MODE:
+            revenue = st.secrets["demo"]["revenue_pipeline"] / 1000000  # Convert to millions
+            st.metric(
+                "💰 Revenue Pipeline",
+                f"${revenue:.1f}M",
+                delta="+15.3%",
+                delta_color="normal"
+            )
+        else:
+            st.metric(
+                "💰 Revenue Pipeline",
+                "$2.4M",
+                delta="+15.3%",
+                delta_color="normal"
+            )
     
     st.divider()
     
