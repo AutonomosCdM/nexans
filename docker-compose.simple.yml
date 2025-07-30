@@ -1,0 +1,48 @@
+# =============================================================================
+# NEXANS PRICING INTELLIGENCE SYSTEM - SIMPLE DEPLOYMENT
+# Despliegue simplificado para demo rápido
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # Main FastAPI Application
+  nexans-pricing-api:
+    build: .
+    container_name: nexans-pricing-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=demo
+      - LOG_LEVEL=info
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Dashboard Demo Application  
+  nexans-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: nexans-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://nexans-pricing-api:8000
+      - DASHBOARD_TITLE=Nexans Pricing Intelligence
+    restart: unless-stopped
+    depends_on:
+      - nexans-pricing-api
+
+networks:
+  default:
+    driver: bridge

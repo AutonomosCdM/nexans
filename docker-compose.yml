@@ -1,0 +1,107 @@
+# =============================================================================
+# NEXANS PRICING INTELLIGENCE SYSTEM - DOCKER COMPOSE
+# Despliegue completo con FastAPI + Dashboard + Database
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # Main FastAPI Application
+  nexans-pricing-api:
+    build: .
+    container_name: nexans-pricing-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - nexans-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Dashboard Demo Application  
+  nexans-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: nexans-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://nexans-pricing-api:8000
+      - DASHBOARD_TITLE=Nexans Pricing Intelligence
+    volumes:
+      - ./dashboard:/app/dashboard
+    networks:
+      - nexans-network
+    restart: unless-stopped
+    depends_on:
+      - nexans-pricing-api
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: nexans-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - nexans-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # PostgreSQL for data persistence
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexans-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=nexans_pricing
+      - POSTGRES_USER=nexans_user
+      - POSTGRES_PASSWORD=nexans_secure_2024
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - nexans-network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nexans-nginx
+    ports:
+      - "80:80"  
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    networks:
+      - nexans-network
+    restart: unless-stopped
+    depends_on:
+      - nexans-pricing-api
+      - nexans-dashboard
+
+networks:
+  nexans-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
