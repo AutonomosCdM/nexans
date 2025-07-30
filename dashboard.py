@@ -20,6 +20,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 import json
+import openai
 try:
     import numpy as np
 except ImportError:
@@ -106,6 +107,9 @@ st.markdown("""
 try:
     API_BASE_URL = st.secrets["api"]["base_url"]
     DEMO_MODE = st.secrets["demo"]["enabled"]
+    # LLM Configuration
+    GROQ_API_KEY = st.secrets["groq"]["api_key"]
+    LLM_MODEL = st.secrets["groq"].get("model", "llama-3.3-70b-versatile")
     # Debug info for Streamlit Cloud
     if st.secrets.get("debug", False):
         st.write(f"🔧 DEBUG: API_BASE_URL = {API_BASE_URL}")
@@ -116,6 +120,8 @@ except Exception as e:
     st.warning("🚀 Running in FORCED DEMO MODE - Secrets not configured correctly")
     API_BASE_URL = "http://localhost:8000"
     DEMO_MODE = True  # Force demo mode instead of False
+    GROQ_API_KEY = "demo-key-placeholder"  # Will be set in Streamlit Cloud secrets
+    LLM_MODEL = "llama-3.3-70b-versatile"
 
 # Helper functions
 @st.cache_data(ttl=300)  # Cache for 5 minutes
@@ -188,6 +194,74 @@ def fetch_health_check():
         }
     return fetch_api_data("/health")
 
+# LLM Integration Functions
+def get_pricing_context():
+    """Get current pricing context for LLM"""
+    lme_data = fetch_lme_prices()
+    
+    context = {
+        "lme_prices": lme_data.get("lme_prices", {}) if lme_data else {},
+        "system_status": "operational",
+        "company": "Nexans Chile",
+        "specialization": "Cable pricing intelligence with ML models",
+        "segments": ["mining", "industrial", "utility", "residential"],
+        "multipliers": {
+            "mining": "1.5x (harsh environments, 45% margin)",
+            "industrial": "1.3x (standard industrial, 35% margin)", 
+            "utility": "1.2x (utility grade, 30% margin)",
+            "residential": "1.0x (residential grade, 25% margin)"
+        },
+        "volume_discounts": "1-100m: 0% | 101-500m: 3% | 501-1000m: 5% | 1001-5000m: 8% | 5000m+: 12%",
+        "regional_factors": {
+            "chile_central": "1.0 (base)",
+            "chile_north": "1.15 (mining premium)",
+            "chile_south": "1.08 (logistics)",
+            "international": "1.25 (export)"
+        }
+    }
+    return context
+
+def get_llm_response(user_message, context):
+    """Get response from Llama 3.3 70B via Groq API"""
+    try:
+        # Configure OpenAI client for Groq
+        client = openai.OpenAI(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=GROQ_API_KEY
+        )
+        
+        system_prompt = f"""Eres un experto consultor en pricing de cables Nexans Chile con profundo conocimiento del mercado industrial.
+
+CONTEXTO DEL SISTEMA:
+- Precios LME actuales: Cobre ${context['lme_prices'].get('copper_usd_per_ton', 'N/A')}/ton, Aluminio ${context['lme_prices'].get('aluminum_usd_per_ton', 'N/A')}/ton
+- Segmentos: {', '.join(context['segments'])}
+- Multiplicadores por segmento: {context['multipliers']}
+- Descuentos por volumen: {context['volume_discounts']}
+- Factores regionales: {context['regional_factors']}
+
+INSTRUCCIONES:
+- Responde en español profesional pero accesible
+- Usa datos específicos del contexto
+- Proporciona explicaciones claras y accionables
+- Si preguntan sobre precios, incluye el reasoning completo
+- Mantén respuestas concisas pero completas (máximo 300 palabras)
+- Usa emojis apropiados para hacer las respuestas más claras"""
+
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content
+    
+    except Exception as e:
+        return f"❌ Error al consultar el asistente IA: {str(e)}"
+
 # Main Dashboard
 def main():
     # Header
@@ -220,6 +294,7 @@ def main():
                 "📈 Market Intelligence",
                 "🔮 Demand Forecasting",
                 "📄 Quote Generator",
+                "💬 AI Pricing Assistant",
                 "⚙️ System Monitor"
             ]
         )
@@ -254,6 +329,8 @@ def main():
         show_demand_forecasting()
     elif page == "📄 Quote Generator":
         show_quote_generator()
+    elif page == "💬 AI Pricing Assistant":
+        show_ai_assistant()
     elif page == "⚙️ System Monitor":
         show_system_monitor()
 
@@ -1045,6 +1122,90 @@ def show_system_monitor():
     
     logs_df = pd.DataFrame(logs)
     st.dataframe(logs_df, use_container_width=True, hide_index=True)
+
+def show_ai_assistant():
+    """AI-powered pricing assistant chat interface"""
+    
+    st.header("💬 AI Pricing Assistant")
+    st.subheader("Consulta inteligente sobre pricing y estrategias")
+    
+    # Initialize chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    
+    # Welcome message
+    if not st.session_state.messages:
+        welcome_msg = """👋 **Asistente de Pricing Nexans Chile**
+
+**Puedo ayudarte con:**
+🔶 Explicaciones de pricing y factores LME
+💼 Estrategias de negociación 
+📊 Análisis de competitividad
+
+¿En qué puedo ayudarte?"""
+        
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": welcome_msg
+        })
+    
+    # Display chat history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Pregunta sobre pricing, estrategias, competencia..."):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Get AI response
+        with st.chat_message("assistant"):
+            with st.spinner("Analizando..."):
+                context = get_pricing_context()
+                response = get_llm_response(prompt, context)
+                st.markdown(response)
+                
+                # Add assistant response to chat history
+                st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    # Quick action buttons
+    st.markdown("---")
+    st.subheader("🚀 Consultas Rápidas")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("💡 ¿Por qué este precio es óptimo?"):
+            quick_prompt = "Explícame los factores que hacen que un precio sea óptimo para un cable industrial de 5kV en el segmento mining"
+            st.session_state.messages.append({"role": "user", "content": quick_prompt})
+            st.rerun()
+    
+    with col2:
+        if st.button("📊 Análisis de competencia"):
+            quick_prompt = "¿Cómo nos posicionamos vs Prysmian y General Cable en pricing? ¿Qué ventajas competitivas tenemos?"
+            st.session_state.messages.append({"role": "user", "content": quick_prompt})
+            st.rerun()
+    
+    with col3:
+        if st.button("🎯 Estrategia CODELCO"):
+            quick_prompt = "¿Qué estrategia de pricing y negociación recomiendas para una oportunidad grande con CODELCO?"
+            st.session_state.messages.append({"role": "user", "content": quick_prompt})
+            st.rerun()
+    
+    # Context display (collapsible)
+    with st.expander("🔍 Ver contexto del sistema"):
+        context = get_pricing_context()
+        st.json(context)
+    
+    # Clear chat button
+    if st.button("🗑️ Limpiar conversación", type="secondary"):
+        st.session_state.messages = []
+        st.rerun()
 
 # Run the app
 if __name__ == "__main__":
