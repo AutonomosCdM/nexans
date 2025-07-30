@@ -160,10 +160,32 @@ def fetch_lme_prices():
 
 def fetch_system_status():
     """Fetch system status"""
+    if DEMO_MODE:
+        return {
+            "status": "healthy", 
+            "timestamp": datetime.now().isoformat(),
+            "services": {
+                "lme_api": "healthy",
+                "ml_model": "healthy", 
+                "database": "healthy"
+            },
+            "source": "Demo Data"
+        }
     return fetch_api_data("/status")
 
 def fetch_health_check():
     """Fetch health check"""
+    if DEMO_MODE:
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(), 
+            "version": "2.0.0",
+            "services": {
+                "lme_api": "healthy",
+                "ml_model": "healthy"
+            },
+            "source": "Demo Data"
+        }
     return fetch_api_data("/health")
 
 # Main Dashboard
@@ -504,7 +526,17 @@ def show_market_intelligence():
     st.subheader("Real-time market monitoring and competitive analysis")
     
     # Market status
-    market_data = fetch_api_data("/api/agents/market/status")
+    if DEMO_MODE:
+        market_data = {
+            "status": "active",
+            "alerts_generated": 23,
+            "price_changes": 156,
+            "competitors_tracked": 12,
+            "timestamp": datetime.now().isoformat(),
+            "source": "Demo Data"
+        }
+    else:
+        market_data = fetch_api_data("/api/agents/market/status")
     
     if market_data:
         col1, col2, col3 = st.columns(3)
